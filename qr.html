@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ข้อมูลตัวอย่างแก้ว</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1 id="code">🧪</h1>
+  <div id="batch" class="muted"></div>
+  <div class="card" style="margin-top:12px">
+    <form id="form">
+      <div>ใส่รหัสเพื่อดูสูตรแก้ว</div>
+      <div class="pin">
+        <input id="pin" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="12" placeholder="รหัส" aria-label="รหัสดูสูตร">
+        <button type="submit">ดูสูตร</button>
+      </div>
+    </form>
+    <p id="msg" class="err" role="status"></p>
+    <div id="out"></div>
+  </div>
+</main>
+<script src="config.js"></script>
+<script>
+(function () {
+  const q = new URLSearchParams(location.search);
+  const b = q.get('b') || '', c = q.get('c') || '';
+  document.getElementById('code').textContent = '🧪 ' + (c || '-');
+  document.getElementById('batch').textContent = b;
+  const msg = document.getElementById('msg'), out = document.getElementById('out'), pin = document.getElementById('pin');
+  pin.focus();
+
+  document.getElementById('form').addEventListener('submit', ev => {
+    ev.preventDefault();
+    msg.textContent = 'กำลังตรวจสอบ…';
+    out.innerHTML = '';
+    glassApi({ a: 'qr', b: b, code: c, pin: pin.value }).then(r => {
+      if (!r.ok) { msg.textContent = r.error; return; }
+      msg.textContent = '';
+      let h = '<table>' + r.info.map(kv => '<tr><th>' + esc(kv[0]) + '</th><td class="wrap">' + esc(kv[1]) + '</td></tr>').join('') + '</table>';
+      h += '<h2>องค์ประกอบ</h2><table><tr><th>ออกไซด์</th><th>mol%</th><th>สารตั้งต้น</th><th>g</th></tr>' +
+        r.rows.map(x => '<tr><td>' + esc(x[0]) + '</td><td class="num">' + esc(x[1]) + '</td><td>' + esc(x[2]) + '</td><td class="num">' + esc(x[3]) + '</td></tr>').join('') + '</table>';
+      out.innerHTML = h;
+    }).catch(e => { msg.textContent = 'เชื่อมต่อไม่สำเร็จ: ' + e.message; });
+  });
+})();
+</script>
+</body>
+</html>
