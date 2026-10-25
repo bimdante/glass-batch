@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>คิวเตรียมสารหลอมแก้ว</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>📋 คิวเตรียมสารหลอมแก้ว</h1>
+  <div id="meta" class="muted">กำลังโหลด…</div>
+  <div id="app"></div>
+</main>
+<script src="config.js"></script>
+<script>
+(function () {
+  const key = new URLSearchParams(location.search).get('k') || '';
+  const meta = document.getElementById('meta');
+  const app = document.getElementById('app');
+  if (!key) { meta.innerHTML = '<span class="err">ลิงก์ไม่ครบ ขอลิงก์ Dashboard จากบอท LINE (พิมพ์ dashboard)</span>'; return; }
+
+  glassApi({ a: 'dash', k: key }).then(render).catch(e => {
+    meta.innerHTML = '<span class="err">โหลดข้อมูลไม่สำเร็จ: ' + esc(e.message) + '</span>';
+  });
+
+  function render(d) {
+    if (!d.ok) { meta.innerHTML = '<span class="err">' + esc(d.error) + '</span>'; return; }
+    meta.textContent = 'อัปเดต ' + d.now + ' · รีเฟรชหน้าเพื่อดูข้อมูลล่าสุด';
+    const active = d.batches.filter(b => b.status !== 'cancelled');
+    const people = [...new Set(active.map(b => b.userName))];
+    const today = new Date();
+    const iso = dt => dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+
+    let h = '<div class="stats">' + d.flow.map(s =>
+      '<div class="stat"><span class="muted">' + esc(d.status[s]) + '</span><b>' + active.filter(b => b.status === s).length + '</b></div>').join('') + '</div>';
+
+    h += '<h2>🔥 ปฏิทินเตา (14 วัน)</h2><div class="card"><table class="cal"><tr><th>วันที่</th>' +
+      d.furnaces.map(f => '<th>' + esc(f) + '</th>').join('') + '</tr>';
+    for (let i = 0; i < 14; i++) {
+      const day = iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + i));
+      h += '<tr><td>' + thaiDate(day) + '</td>' + d.furnaces.map(f => {
+        const here = active.filter(b => b.furnace === f && b.meltDate === day);
+        return here.length ? '<td class="busy">' + here.map(b => esc(b.batchId) + '<br>' + esc(b.userName)).join('<hr>') + '</td>' : '<td></td>';
+      }).join('') + '</tr>';
+    }
+    h += '</table></div>';
+
+    h += '<h2>📦 รายการทั้งหมด</h2><div class="card"><div class="filters">' +
+      '<select id="fs"><option value="">ทุกสถานะ</option>' + Object.keys(d.status).map(s => '<option value="' + s + '">' + esc(d.status[s]) + '</option>').join('') + '</select>' +
+      '<select id="ff"><option value="">ทุกเตา</option>' + d.furnaces.map(f => '<option>' + esc(f) + '</option>').join('') + '</select>' +
+      '<select id="fp"><option value="">ทุกคน</option>' + people.map(p => '<option>' + esc(p) + '</option>').join('') + '</select>' +
+      '<label class="muted"><input type="checkbox" id="fu" checked> เฉพาะงานที่ยังไม่เสร็จ</label></div>' +
+      '<table id="q"><tr><th>วันหลอม</th><th>เตา</th><th>Batch</th><th>สถานะ</th><th>ผู้เตรียม</th><th>สูตร</th><th>ตัวอย่าง</th><th>โปรไฟล์</th><th>ไฟล์</th></tr>';
+    const todayIso = iso(today);
+    d.batches.slice().sort((a, b) => a.meltDate.localeCompare(b.meltDate)).forEach(b => {
+      const files = [['Excel', b.xlsxUrl], ['ใบชั่ง', b.weighPdfUrl], ['ป้าย', b.labelPdfUrl]]
+        .filter(f => f[1]).map(f => '<a href="' + esc(f[1]) + '" target="_blank" rel="noopener">' + f[0] + '</a>').join(' · ');
+      const late = b.meltDate < todayIso && b.status === 'queued' ? ' ⚠️' : '';
+      h += '<tr data-s="' + esc(b.status) + '" data-f="' + esc(b.furnace) + '" data-p="' + esc(b.userName) + '">' +
+        '<td>' + thaiDate(b.meltDate) + late + '</td><td>' + esc(b.furnace) + '</td><td>' + esc(b.batchId) + '</td>' +
+        '<td>' + esc(d.status[b.status] || b.status) + '</td><td>' + esc(b.preparer) + '</td>' +
+        '<td class="wrap">' + esc(b.formula) + '</td><td>' + esc(b.codes.split(',').join(', ')) + '</td>' +
+        '<td>' + esc(b.profile) + '</td><td>' + files + '</td></tr>';
+    });
+    h += '</table></div>';
+    app.innerHTML = h;
+
+    const filter = () => {
+      const s = fs.value, f = ff.value, p = fp.value, u = fu.checked;
+      document.querySelectorAll('#q tr[data-s]').forEach(r => {
+        const ok = (!s || r.dataset.s === s) && (!f || r.dataset.f === f) && (!p || r.dataset.p === p) &&
+          (!u || (r.dataset.s !== 'done' && r.dataset.s !== 'cancelled'));
+        r.style.display = ok ? '' : 'none';
+      });
+    };
+    const fs = document.getElementById('fs'), ff = document.getElementById('ff'), fp = document.getElementById('fp'), fu = document.getElementById('fu');
+    [fs, ff, fp, fu].forEach(el => el.addEventListener('change', filter));
+    filter();
+  }
+})();
+</script>
+</body>
+</html>
